@@ -1,38 +1,89 @@
-# People_Analytics_IBM
+# People_Analytics_IBM: Auditoría Salarial y Retención del Talento
 
-Proyecto de People Analytics en Power BI. Modelé un esquema en estrella con SQL desde datos planos y desarrollé KPIs en DAX para RRHH. El dashboard dual (Compensaciones y Demografía) audita la equidad salarial y analiza la rotación, revelando fugas críticas de talento en el primer año y anomalías de pago para optimizar decisiones corporativas.
+Proyecto integral de People Analytics desarrollado en Power BI. El objetivo principal fue transformar un dataset transaccional plano en un modelo de datos dimensional (Esquema en Estrella) mediante SQL, y desarrollar KPIs en DAX para el área de Recursos Humanos. El dashboard dual resultante (Compensaciones y Demografía) audita la equidad salarial y analiza la rotación, revelando fugas críticas de talento en el primer año y anomalías de pago para optimizar la toma de decisiones corporativas.
 
-## 1. Contexto y Objetivo del Negocio
+---
 
-El departamento de Recursos Humanos requería visibilidad sobre la distribución de su masa salarial y el comportamiento de la rotación de personal. El objetivo fue construir una herramienta interactiva que permitiera auditar la equidad salarial interna y detectar los principales focos de pérdida de talento humano para tomar acciones correctivas.
+## 1. Contexto y Preguntas de Negocio
+
+El departamento de Recursos Humanos requería visibilidad profunda sobre la distribución de su presupuesto y la salud de su plantilla. El proyecto se estructuró para responder a tres preguntas de negocio críticas:
+1. ¿Estamos compensando de manera justa y competitiva a nuestros colaboradores según su desempeño?
+2. ¿Existen sesgos salariales o anomalías en la estructura de pagos de los distintos departamentos?
+3. ¿En qué momento exacto del ciclo de vida del empleado se produce la mayor fuga de talento?
+
+---
 
 ## 2. Arquitectura y Modelado de Datos (Back-end)
 
-Se partió de una base de datos plana (`Raw_HR_Data`) la cual fue normalizada y estructurada bajo las mejores prácticas de inteligencia de negocios:
+Se partió de una base de datos plana (`Raw_HR_Data`) la cual fue normalizada utilizando **SQL Server**. Se estructuró bajo el enfoque de modelado dimensional de Ralph Kimball para asegurar un procesamiento eficiente en el motor VertiPaq de Power BI:
 
-* **Diseño de Modelo en Estrella:** Creación mediante consultas SQL de una tabla de hechos central (`Fact_Nomina`) para las métricas cuantitativas, rodeada de dimensiones clave (`Dim_Employee`, `Dim_JobRole`, `Dim_Desempeño`).
-* **Optimización:** Uso de llaves subrogadas y eliminación de columnas redundantes o estáticas para asegurar un procesamiento eficiente en el motor VertiPaq de Power BI.
+* **Tabla de Hechos (`Fact_Nomina`):** Almacena métricas cuantitativas puras (MonthlyIncome, PercentSalaryHike) y dimensiones degeneradas (Attrition).
+* **Tablas de Dimensiones:** Creación de `Dim_Employee` (datos demográficos), `Dim_JobRole` (jerarquía y área) y `Dim_Desempeño` (catálogo de evaluaciones).
+* **Integridad y Rendimiento:** Se generaron llaves subrogadas (`IDENTITY(1,1)`) y se limpiaron columnas con varianza cero (ej. `StandardHours = 80`) para optimizar el peso del modelo. Todas las relaciones en Power BI se configuraron como **1 a Varios (1:*)** con dirección de filtro único.
 
-## 3. Desarrollo Analítico (DAX)
+---
 
-Se programaron medidas dinámicas para responder a preguntas de negocio complejas:
+## 3. Desarrollo Analítico (Código DAX)
 
-* **Índice de Equidad Interna:** Creación de un KPI personalizado que compara el salario de un colaborador contra la mediana salarial de sus pares en el mismo rol, identificando fugas de presupuesto o empleados subpagados.
-* **Métricas de Rotación:** Cálculos dinámicos de la tasa de renuncia (`Attrition`) segmentables por departamento, género y antigüedad.
-* **Agrupación Demográfica:** Uso de DAX para categorizar edades exactas en rangos generacionales lógicos, facilitando el análisis visual poblacional.
+Para dotar al dashboard de inteligencia real, se evitaron los promedios simples y se programaron medidas dinámicas complejas orientadas a la evaluación de RRHH:
 
-## 4. Diseño de Interfaz y Experiencia de Usuario (UI/UX)
+* **A. Índice de Equidad Interna (Alternativa al Compa-Ratio):**
+Se calculó la mediana salarial específica de cada rol para evaluar si un empleado está sobrepagado o subpagado respecto a sus pares directos.
 
-El reporte se dividió en dos lienzos enfocados en reducir la carga cognitiva del usuario gerencial:
+dax
+Mediana Salarial del Puesto = 
+CALCULATE(
+    MEDIAN(Fact_Nomina[MonthlyIncome]),
+    ALLEXCEPT(Dim_JobRole, Dim_JobRole[JobRole])
+)
 
-* **Dashboard de Compensación y Equidad:** Visualización del presupuesto por niveles jerárquicos (Gráficos 100% apilados) y matrices de calor con formato condicional para resaltar desviaciones en las políticas de pago.
-* **Dashboard Demográfico:** Análisis de diversidad y curvas de retención a lo largo del ciclo de vida del empleado.
-* **Storytelling con Datos:** Implementación de una paleta de colores corporativa (Azul marino base y acentos vibrantes) donde el color actúa como alerta semaforizada, dirigiendo la atención inmediatamente a los departamentos con problemas (ej. Alta rotación resaltada en color naranja/rojo).
+Indice Equidad Interna = 
+DIVIDE(
+    AVERAGE(Fact_Nomina[MonthlyIncome]),
+    [Mediana Salarial del Puesto],
+    BLANK()
+)
 
-## 5. Hallazgos Clave (Business Insights)
+* **B. Tasa de Rotación (Turnover Rate):**
+Cálculo dinámico que reacciona a los filtros demográficos y geográficos.
+Total Bajas = CALCULATE([Total Colaboradores], Fact_Nomina[Attrition] = "Yes")
 
-Gracias a la interactividad del modelo, se detectaron hallazgos críticos para la toma de decisiones:
+Tasa de Rotacion = DIVIDE([Total Bajas], [Total Colaboradores], 0)
 
-1. **Penalización del Talento:** El análisis cruzado reveló que los colaboradores calificados como "Talento Excepcional" perciben, en promedio, un salario ligeramente inferior a aquellos que solo "Cumplen Expectativas", evidenciando una falla en el esquema de incentivos.
-2. **Crisis de Onboarding:** La curva de antigüedad demuestra que el pico máximo de renuncias ocurre durante el primer año, sugiriendo la necesidad urgente de rediseñar el proceso de inducción.
-3. **Focos de Rotación:** Los departamentos de Ventas (Sales) y Recursos Humanos presentan tasas de rotación superiores al límite aceptable corporativo (15%), requiriendo intervención inmediata.
+* **C. Segmentación Generacional (Columnas Calculadas):**
+Transformación de la edad lineal en bloques de análisis demográfico para evitar el ruido visual en los gráficos.
+Rango de Edad = 
+SWITCH(
+    TRUE(),
+    Dim_Employee[Age] >= 18 && Dim_Employee[Age] <= 25, "1. 18 - 25 años",
+    Dim_Employee[Age] >= 26 && Dim_Employee[Age] <= 35, "2. 26 - 35 años",
+    Dim_Employee[Age] >= 36 && Dim_Employee[Age] <= 45, "3. 36 - 45 años",
+    Dim_Employee[Age] >= 46 && Dim_Employee[Age] <= 60, "4. 46 - 60 años",
+    "Sin registro"
+)
+
+## 4. Diseño de Interfaz y Visualizaciones (UI/UX)
+El reporte se dividió en dos lienzos aplicando principios de Storytelling con Datos y una paleta de colores corporativa (Azul marino base para contexto, Naranja/Rojo para alertas).
+
+### Lienzo 1: Dashboard de Compensación y Equidad
+**Gráfico de Barras Apiladas 100%:** Mostró la Masa Salarial por JobLevel. Permitió visualizar instantáneamente qué departamentos tienen estructuras operativas pesadas (Niveles 1 y 2) vs. cúpulas gerenciales costosas.
+
+**Matriz de Calor con Formato Condicional:** Cruzó el JobRole con el Índice de Equidad Interna. Los roles con índices < 95% se iluminaron en naranja, creando una herramienta accionable diaria para revisión de sueldos.
+
+**Gráfico de Columnas (Salario vs. Desempeño):** Diseñado para validar si la empresa practica una verdadera meritocracia.
+
+### Lienzo 2: Dashboard Demográfico y Retención
+**Gráfico de Barras Horizontales (Pirámide Poblacional):** Alimentado por el DAX de Rangos de Edad, mapeó el núcleo generacional de la empresa.
+
+**Gráfico de Líneas (Fugas por Antigüedad):** Trazó el volumen de bajas en el Eje Y contra los años en la empresa en el Eje X, revelando los momentos críticos de deserción.
+
+**Gráfico de Columnas con Línea Constante:** Mostró la rotación por departamento, marcando con una línea roja el 15% (Límite aceptable corporativo).
+
+## 5. Hallazgos Clave y Recomendaciones (Business Insights)
+La interactividad del modelo permitió descubrir tres fallos sistémicos en las políticas de Recursos Humanos:
+
+* **Penalización Económica del Top Talent:** El cruce de Salario vs. Desempeño reveló una anomalía crítica: los colaboradores calificados como "Talento Excepcional" perciben, en promedio, un salario inferior a aquellos evaluados como "Cumple Expectativas". Recomendación: Congelar contrataciones externas y reestructurar el presupuesto de bonos para retener a los top performers.
+
+* **Crisis en el Onboarding (Deserción Temprana):** El análisis de fuga por antigüedad demostró que el pico máximo absoluto de renuncias ocurre drásticamente en el Año 1. Recomendación: Auditar el proceso de reclutamiento (¿se están prometiendo condiciones irreales?) y rediseñar por completo el programa de inducción de los primeros 90 días.
+
+* **Focos Rojos de Rotación Departamental:* Ventas (Sales) y Recursos Humanos superaron ampliamente la barrera del 15% de rotación. Al filtrar el departamento de Ventas en el gráfico de antigüedad, el eje dinámico reveló una "segunda ola" de renuncias alrededor del quinto año, sugiriendo un fuerte desgaste (burnout) del talento comercial senior.
